@@ -1,0 +1,110 @@
+import requests
+import json
+from datetime import datetime
+import pandas as pd
+import os
+
+def formatar_cnpj(cnpj):
+    # Remove qualquer caractere que não seja número, por conta de erros de digitação (o que é muito comum aqui nas áreas)
+    cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
+    if len(cnpj_limpo) != 14:
+        return None
+    return cnpj_limpo
+
+def buscar_cnpj(cnpj):
+    url = f"https://www.receitaws.com.br/v1/cnpj/{cnpj}"
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return None
+
+def processar_arquivo_excel(caminho_arquivo):
+    try:
+        df = pd.read_excel(caminho_arquivo, usecols=[0])  # Lê apenas a primeira coluna, no caso coloquei para ler a coluna "A" que contém o CNPJ
+        df.columns = ['CNPJ']  # Renomeia a coluna para 'CNPJ', na situação em que as áreas aqui dentro do grupo colocarem um nome diferente, ou até mesmo quando a gente extrair do Benner e vier com outro nome.
+        
+        resultados = []
+        total = len(df)
+        
+        for index, row in df.iterrows():
+            cnpj_original = str(row['CNPJ'])
+            cnpj_formatado = formatar_cnpj(cnpj_original)
+            
+            if cnpj_formatado:
+                print(f"Processando CNPJ {index+1}/{total}: {cnpj_formatado}")
+                dados = buscar_cnpj(cnpj_formatado)
+                
+                if dados:
+                    resultados.append({
+                        'CNPJ': cnpj_original,
+                        'Nome': dados.get('nome', ''),
+                        'Fantasia': dados.get('fantasia', ''),
+                        'Logradouro': dados.get('logradouro', ''),
+                        'Número': dados.get('numero', ''),
+                        'Complemento': dados.get('complemento', ''),
+                        'Município': dados.get('municipio', ''),
+                        'UF': dados.get('uf', ''),
+                        'CEP': dados.get('cep', ''),
+                        'Telefone': dados.get('telefone', ''),
+                        'Email': dados.get('email', ''),
+                        'Situação': dados.get('situacao', ''),
+                        'Data da Situação': dados.get('data_situacao', ''),
+                        'CNAE Principal': dados.get('atividade_principal', [{}])[0].get('text', ''),
+                        'Capital Social': dados.get('capital_social', ''),
+                        'Porte': dados.get('porte', ''),
+                        'Natureza Jurídica': dados.get('natureza_juridica', ''),
+                        'Status': 'Sucesso'
+                    })
+                else:
+                    resultados.append({'CNPJ': cnpj_original, 'Status': 'Falha'})
+            else:
+                print(f"CNPJ inválido: {cnpj_original}")
+                resultados.append({'CNPJ': cnpj_original, 'Status': 'CNPJ Inválido'})
+        
+        # Cria um DataFrame com os resultados e salva em um arquivo Excel, mas tem como extrair em txt também.
+        df_resultados = pd.DataFrame(resultados)
+        nome_arquivo_resultados = "resultados_processamento.xlsx"
+        df_resultados.to_excel(nome_arquivo_resultados, index=False)
+        print(f"Resumo do processamento salvo em: {nome_arquivo_resultados}")
+        
+    except Exception as e:
+        print(f"Erro ao processar o arquivo: {str(e)}")
+
+def main():
+    while True:
+        escolha = input("Escolha uma opção:\n1 - Processar CNPJ único\n2 - Processar arquivo Excel\n3 - Sair\nSua escolha: ")
+        
+        if escolha == '1':
+            cnpj = input("Digite o CNPJ: ")
+            cnpj_formatado = formatar_cnpj(cnpj)
+            
+            if cnpj_formatado:
+                print("Buscando informações...")
+                dados = buscar_cnpj(cnpj_formatado)
+                
+                if dados:
+                    print("Informações da empresa:")
+                    print(json.dumps(dados, indent=4, ensure_ascii=False))
+                else:
+                    print("Não foi possível obter as informações. Verifique o CNPJ e tente novamente.")
+            else:
+                print("CNPJ inválido. Por favor, digite um CNPJ válido.")
+        
+        elif escolha == '2':
+            caminho_arquivo = input("Digite o caminho completo do arquivo Excel: ")
+            if os.path.exists(caminho_arquivo):
+                processar_arquivo_excel(caminho_arquivo)
+            else:
+                print("Arquivo não encontrado. Verifique o caminho e tente novamente.")
+        
+        elif escolha == '3':
+            print("Encerrando o programa...")
+            break
+        
+        else:
+            print("Opção inválida. Por favor, escolha 1, 2 ou 3.")
+
+if __name__ == "__main__":
+    main()
